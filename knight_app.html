@@ -1,0 +1,1132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Knight's Journey: An Interactive Exploration</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- ... existing head content ... -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .board-square {
+            position: relative;
+            cursor: pointer;
+        }
+        .board-square-content {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+        #graph-canvas {
+            cursor: pointer;
+            border-radius: 0.5rem;
+            border: 1px solid #e7e5e4; /* stone-200 */
+        }
+        #chessboard {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 0;
+        }
+        .chess-piece {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            z-index: 10;
+            pointer-events: none; /* Make it non-interactive */
+            filter: drop-shadow(0 4px 6px rgba(0,0,0,0.25));
+            transition: transform 0.2s ease-in-out;
+        }
+        .dragging {
+            z-index: 999;
+            width: 12.5%; /* Same as a square */
+            height: 12.5%;
+            transform-origin: center center;
+            opacity: 0.9;
+            filter: drop-shadow(0 10px 15px rgba(0,0,0,0.4));
+        }
+        .ghost-knight {
+            transition: transform 0.4s cubic-bezier(0.5, 0, 0.5, 1.5);
+            opacity: 0.7;
+        }
+        .ghost-knight svg {
+             animation: knight-arc-jump 0.4s ease-out;
+        }
+        .piece-palette-item {
+            cursor: pointer;
+            transition: transform 0.2s, background-color 0.2s;
+        }
+        .piece-palette-item.selected {
+            transform: scale(1.1);
+            background-color: #dbeafe; /* blue-100 */
+            border-color: #3b82f6; /* blue-500 */
+        }
+        .valid-move-dot {
+            width: 30%;
+            height: 30%;
+            background-color: rgba(0,0,0,0.2);
+            border-radius: 50%;
+        }
+        .last-move-highlight {
+            background-color: rgba(251, 191, 36, 0.5); /* amber-400 with opacity */
+        }
+
+        @keyframes knight-arc-jump {
+            0%, 100% {
+                transform: translateY(0) scale(1);
+            }
+            50% {
+                transform: translateY(-20%) scale(1.15);
+            }
+        }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+</head>
+<body class="bg-stone-100 text-stone-800 antialiased">
+
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="text-center mb-8 hidden">
+            <h1 class="text-3xl md:text-4xl font-bold text-stone-900">A Knight's Journey</h1>
+            <p class="text-lg text-stone-600 mt-2">An Interactive Exploration of Chess, Algorithms, and Graph Theory</p>
+        </header>
+
+        <main id="main-content" class="flex flex-col gap-8">
+            <!-- Visualizations Area -->
+            <div id="visuals-container" class="flex flex-col lg:flex-row gap-8">
+                <div id="board-wrapper" class="w-full">
+                    <div id="chessboard-container" class="relative mx-auto" style="max-width: 80vh;">
+                         <!-- Algebraic Notation will be injected here -->
+                    </div>
+                </div>
+                <div id="graph-container" class="w-full">
+                     <div id="canvas-wrapper" class="w-full h-full min-h-[300px] lg:aspect-square bg-white p-2 rounded-lg shadow-lg flex items-center justify-center">
+                        <canvas id="graph-canvas"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Controls and Information Area -->
+            <div id="info-container" class="w-full bg-white p-6 rounded-lg shadow-lg">
+                <div class="flex flex-col md:flex-row gap-6">
+                    <!-- Mode Selection -->
+                    <div class="w-full md:w-1/3">
+                        <h2 class="text-xl font-bold mb-2 text-stone-900">Interactive Mode</h2>
+                        <p class="text-stone-600 mb-4 text-sm">Select a mode to explore a different concept.</p>
+                        <div class="flex flex-col gap-2">
+                            <button id="mode-moves" class="mode-btn w-full text-left bg-blue-600 text-white px-4 py-2 rounded-md shadow hover:bg-blue-700 transition-colors duration-200">Algorithm Demo</button>
+                            <button id="mode-heatmap" class="mode-btn w-full text-left bg-stone-200 text-stone-700 px-4 py-2 rounded-md shadow hover:bg-stone-300 transition-colors duration-200">Control Heatmap</button>
+                            <button id="mode-path" class="mode-btn w-full text-left bg-stone-200 text-stone-700 px-4 py-2 rounded-md shadow hover:bg-stone-300 transition-colors duration-200">Pathfinder</button>
+                             <button id="mode-sandbox" class="mode-btn w-full text-left bg-stone-200 text-stone-700 px-4 py-2 rounded-md shadow hover:bg-stone-300 transition-colors duration-200">Sandbox</button>
+                        </div>
+                    </div>
+                    <!-- View Selection & Info -->
+                    <div class="w-full md:w-2/3 border-t md:border-t-0 md:border-l border-stone-200 pt-6 md:pt-0 md:pl-6">
+                        <div class="flex items-center justify-between">
+                             <h2 class="text-xl font-bold text-stone-900">Display View</h2>
+                             <div class="flex items-center gap-2">
+                                <button id="view-board" class="path-view-btn flex-1 px-3 py-1 text-sm rounded-md shadow-sm transition-colors">Board</button>
+                                <button id="view-graph" class="path-view-btn flex-1 px-3 py-1 text-sm rounded-md shadow-sm transition-colors">Graph</button>
+                                <button id="view-split" class="path-view-btn flex-1 px-3 py-1 text-sm rounded-md shadow-sm transition-colors">Split</button>
+                            </div>
+                        </div>
+                         <div id="info-panel" class="mt-4 text-sm">
+                            <!-- Content will be updated by JS -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // ... existing script setup (const declarations) ...
+        const chessboardContainer = document.getElementById('chessboard-container');
+        let chessboard; // Will be created dynamically
+        const infoPanel = document.getElementById('info-panel');
+        const boardWrapper = document.getElementById('board-wrapper');
+        const graphContainer = document.getElementById('graph-container');
+        
+        const modeButtons = {
+            moves: document.getElementById('mode-moves'),
+            heatmap: document.getElementById('mode-heatmap'),
+            path: document.getElementById('mode-path'),
+            sandbox: document.getElementById('mode-sandbox'),
+        };
+        const viewButtons = {
+            board: document.getElementById('view-board'),
+            graph: document.getElementById('view-graph'),
+            split: document.getElementById('view-split'),
+        };
+
+        let boardState = []; // For DOM elements
+        let currentMode = 'moves';
+        let currentView = 'split'; 
+        let pathfinderState = { start: null, end: null, path: null, hoverNode: null, isAnimating: false, allowTrades: false };
+        let sandboxState = { 
+            pieces: Array(8).fill(null).map(() => Array(8).fill(null)),
+            selectedPiece: 'eraser',
+            activeScenario: null, // Holds the saved scenario object {name, pieces}
+            subMode: 'setup', // 'setup', 'play', 'analyze'
+            turn: 'w',
+            play: {
+                selectedSquare: null,
+                validMoves: [],
+                dragging: null,
+                lastMove: null
+            }
+        };
+        
+        let graphCanvas, graphCtx, nodePositions = [], nodeRadius;
+
+        const PIECES_SVG = {
+            'wK': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45"><g fill="#fff" fill-rule="evenodd" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22.5 11.63V6M20 8h5"/><path d="M22.5 25s4.5-7.5 3-10.5c0 0-1-2.5-3-2.5s-3 2.5-3 2.5c-1.5 3 3 10.5 3 10.5" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M12.5 37c5.5-2.5 14.5-2.5 20 0v-7s-4.5-2.5-10-2.5-10 2.5-10 2.5v7z"/><path d="M12.5 30c5.5-2.5 14.5-2.5 20 0v-2.5s-4.5-2.5-10-2.5-10 2.5-10 2.5v2.5z"/><path d="M12.5 25c5.5-2.5 14.5-2.5 20 0V23s-4.5-2-10-2-10 2-10 2v2z"/><path d="M12.5 41.5h20" fill="none" stroke-linecap="butt"/></g></svg>`,
+            'wQ': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45"><g fill="#fff" fill-rule="evenodd" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 37c5.5-2.5 14.5-2.5 20 0v-7s-4.5-2.5-10-2.5-10 2.5-10 2.5v7zM12.5 30c5.5-2.5 14.5-2.5 20 0v-2.5s-4.5-2.5-10-2.5-10 2.5-10 2.5v2.5z"/><path d="M12.5 25c5.5-2.5 14.5-2.5 20 0V23s-4.5-2-10-2-10 2-10 2v2zM12.5 41.5h20" stroke-linecap="butt"/><circle cx="6" cy="12" r="2.5"/><circle cx="14" cy="9" r="2.5"/><circle cx="22.5" cy="8" r="2.5"/><circle cx="31" cy="9" r="2.5"/><circle cx="39" cy="12" r="2.5"/><path d="M9 14.5s5-3 13.5-3 13.5 3 13.5 3V22s-5-3-13.5-3-13.5 3-13.5 3v-7.5z" stroke-linecap="butt"/></g></svg>`,
+            'wR': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45"><g fill="#fff" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 39h27v-3H9v3zM12 36v-4h21v4H12zM11 14V9h4v2h5V9h5v2h5V9h4v5" stroke-linecap="butt"/><path d="M34 14l-3 3H14l-3-3"/><path d="M31 17v12.5H14V17" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M31 29.5l1.5 2.5h-20l1.5-2.5"/><path d="M14 17h17" fill="none"/></g></svg>`,
+            'wB': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45"><g fill="#fff" fill-rule="evenodd" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 36h27v-2H9v2zm3-4h21v-3H12v3zm6-4h9v-5h-9v5zm0-5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/><path d="M15 14.5L22.5 7l7.5 7.5S25 18 22.5 18s-7.5-3.5-7.5-3.5z"/><path d="M15 14.5c4.5-5 15-5 15 0s-3 11.5-7.5 11.5S10.5 19.5 15 14.5z"/></g></svg>`,
+            'wN': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45"><g fill="none" fill-rule="evenodd" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10c10.5 1 11.5 8 11.5 10.5C33.5 25 29 30 22.5 30.5c-3.5 0-6.5-2-6.5-5.5s3-5.5 6.5-5.5" fill="#fff"/><path d="M24 18c.38 2.91-5.55 7.37-8.5 7.5-1.04.05-1.97-.58-2.5-1.5-1.2-2.14 1.2-4.14 1-5-.2-1 3 0 3-1.5s-3-1.5-3-1-3 .5-3-1.5c0-1.5 2.33-2.5 4-2.5 3 0 6.5 2 8.5 4.5z"/><path d="M12.5 37c5.5-2.5 14.5-2.5 20 0v-7s-4.5-2.5-10-2.5-10 2.5-10 2.5v7z" fill="#fff"/><path d="M12.5 30c5.5-2.5 14.5-2.5 20 0v-2.5s-4.5-2.5-10-2.5-10 2.5-10 2.5v2.5z" fill="#fff"/><path d="M12.5 41.5h20" fill="none" stroke-linecap="butt"/></g></svg>`,
+            'wP': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45"><g fill="#fff" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22.5 9c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm0 9c-4.42 0-8 3.58-8 8v3h16v-3c0-4.42-3.58-8-8-8z"/><path d="M12 36h21v-3H12v3z"/></g></svg>`,
+            'bK': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45"><g fill="#000" fill-rule="evenodd" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22.5 11.63V6M20 8h5" fill="#000"/><path d="M22.5 25s4.5-7.5 3-10.5c0 0-1-2.5-3-2.5s-3 2.5-3 2.5c-1.5 3 3 10.5 3 10.5" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M12.5 37c5.5-2.5 14.5-2.5 20 0v-7s-4.5-2.5-10-2.5-10 2.5-10 2.5v7z"/><path d="M12.5 30c5.5-2.5 14.5-2.5 20 0v-2.5s-4.5-2.5-10-2.5-10 2.5-10 2.5v2.5z"/><path d="M12.5 25c5.5-2.5 14.5-2.5 20 0V23s-4.5-2-10-2-10 2-10 2v2z"/><path d="M12.5 41.5h20" fill="none" stroke-linecap="butt"/></g></svg>`,
+            'bQ': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45"><g fill="#000" fill-rule="evenodd" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 37c5.5-2.5 14.5-2.5 20 0v-7s-4.5-2.5-10-2.5-10 2.5-10 2.5v7zM12.5 30c5.5-2.5 14.5-2.5 20 0v-2.5s-4.5-2.5-10-2.5-10 2.5-10 2.5v2.5z"/><path d="M12.5 25c5.5-2.5 14.5-2.5 20 0V23s-4.5-2-10-2-10 2-10 2v2zM12.5 41.5h20" stroke-linecap="butt"/><circle cx="6" cy="12" r="2.5"/><circle cx="14" cy="9" r="2.5"/><circle cx="22.5" cy="8" r="2.5"/><circle cx="31" cy="9" r="2.5"/><circle cx="39" cy="12" r="2.5"/><path d="M9 14.5s5-3 13.5-3 13.5 3 13.5 3V22s-5-3-13.5-3-13.5 3-13.5 3v-7.5z" stroke-linecap="butt"/></g></svg>`,
+            'bR': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45"><g fill="#000" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 39h27v-3H9v3zM12 36v-4h21v4H12zM11 14V9h4v2h5V9h5v2h5V9h4v5" stroke-linecap="butt"/><path d="M34 14l-3 3H14l-3-3"/><path d="M31 17v12.5H14V17" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M31 29.5l1.5 2.5h-20l1.5-2.5"/><path d="M14 17h17" fill="none"/></g></svg>`,
+            'bB': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45"><g fill="#000" fill-rule="evenodd" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 36h27v-2H9v2zm3-4h21v-3H12v3zm6-4h9v-5h-9v5zm0-5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/><path d="M15 14.5L22.5 7l7.5 7.5S25 18 22.5 18s-7.5-3.5-7.5-3.5z"/><path d="M15 14.5c4.5-5 15-5 15 0s-3 11.5-7.5 11.5S10.5 19.5 15 14.5z"/></g></svg>`,
+            'bN': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45"><g fill="none" fill-rule="evenodd" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10c10.5 1 11.5 8 11.5 10.5C33.5 25 29 30 22.5 30.5c-3.5 0-6.5-2-6.5-5.5s3-5.5 6.5-5.5" fill="#000"/><path d="M24 18c.38 2.91-5.55 7.37-8.5 7.5-1.04.05-1.97-.58-2.5-1.5-1.2-2.14 1.2-4.14 1-5-.2-1 3 0 3-1.5s-3-1.5-3-1-3 .5-3-1.5c0-1.5 2.33-2.5 4-2.5 3 0 6.5 2 8.5 4.5z"/><path d="M12.5 37c5.5-2.5 14.5-2.5 20 0v-7s-4.5-2.5-10-2.5-10 2.5-10 2.5v7z" fill="#000"/><path d="M12.5 30c5.5-2.5 14.5-2.5 20 0v-2.5s-4.5-2.5-10-2.5-10 2.5-10 2.5v2.5z" fill="#000"/><path d="M12.5 41.5h20" fill="none" stroke-linecap="butt"/></g></svg>`,
+            'bP': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45"><g fill="#000" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22.5 9c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm0 9c-4.42 0-8 3.58-8 8v3h16v-3c0-4.42-3.58-8-8-8z"/><path d="M12 36h21v-3H12v3z"/></g></svg>`
+        };
+        const STANDARD_BOARD_SETUP = [
+            [{type:'R',color:'b'},{type:'N',color:'b'},{type:'B',color:'b'},{type:'Q',color:'b'},{type:'K',color:'b'},{type:'B',color:'b'},{type:'N',color:'b'},{type:'R',color:'b'}],
+            Array(8).fill({type:'P',color:'b'}),
+            Array(8).fill(null),
+            Array(8).fill(null),
+            Array(8).fill(null),
+            Array(8).fill(null),
+            Array(8).fill({type:'P',color:'w'}),
+            [{type:'R',color:'w'},{type:'N',color:'w'},{type:'B',color:'w'},{type:'Q',color:'w'},{type:'K',color:'w'},{type:'B',color:'w'},{type:'N',color:'w'},{type:'R',color:'w'}]
+        ];
+
+        const HEATMAP_COLORS = {
+            2: 'bg-blue-300', 3: 'bg-cyan-300', 4: 'bg-green-300',
+            6: 'bg-yellow-300', 8: 'bg-red-300'
+        };
+
+        const INFO_CONTENT = {
+            moves: {
+                title: "The Core Algorithm: How a Knight Moves",
+                instruction: "Click a square on the board or a node on the graph.",
+                description: "This demonstrates the fundamental algorithm. 'Ghost' knights animate the 8 potential moves, and the valid destination squares are highlighted."
+            },
+            heatmap: {
+                title: "The Heatmap of Control",
+                instruction: "Visualizing strategic power.",
+                description: "This view runs the algorithm on all 64 squares and colors them based on the number of legal moves. This transforms an abstract strategic idea into objective data."
+            },
+            path: {
+                title: "Pathfinder",
+                instruction: "Click a start square, then an end square.",
+                description: "On an empty board, this finds the shortest path. To analyze a specific board state, create a scenario in the Sandbox first, then switch to this mode."
+            },
+            sandbox: {
+                title: "Scenario Sandbox",
+                instruction: "Select a piece from the palette to place it on the board. Click an existing piece to remove it.",
+                description: "Create a tactical puzzle. Once a scenario is active (by creating one here), switch to Pathfinder mode to run a threat-aware analysis on it."
+            }
+        };
+        
+        // ... (Movement logic for all pieces) ...
+        function getKnightMoves(r, c) {
+            const moves = [
+                [-2, -1], [-2, 1], [2, -1], [2, 1],
+                [-1, -2], [-1, 2], [1, -2], [1, 2]
+            ];
+            const valid = [];
+            for(const [dr, dc] of moves) {
+                const nr = r + dr, nc = c + dc;
+                if(nr >= 0 && nr < 8 && nc >= 0 && nc < 8) valid.push([nr, nc]);
+            }
+            return valid;
+        }
+
+        function getRookMoves(r, c, pieces) {
+            const moves = [];
+            const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+            for(const [dr, dc] of dirs) {
+                for(let i = 1; i < 8; i++) {
+                    const nr = r + i * dr, nc = c + i * dc;
+                    if(nr < 0 || nr >= 8 || nc < 0 || nc >= 8) break;
+                    moves.push([nr, nc]);
+                    if(pieces[nr][nc]) break;
+                }
+            }
+            return moves;
+        }
+
+        function getBishopMoves(r, c, pieces) {
+            const moves = [];
+            const dirs = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
+            for(const [dr, dc] of dirs) {
+                for(let i = 1; i < 8; i++) {
+                    const nr = r + i * dr, nc = c + i * dc;
+                    if(nr < 0 || nr >= 8 || nc < 0 || nc >= 8) break;
+                    moves.push([nr, nc]);
+                    if(pieces[nr][nc]) break;
+                }
+            }
+            return moves;
+        }
+
+        function getQueenMoves(r, c, pieces) {
+            return [...getRookMoves(r, c, pieces), ...getBishopMoves(r, c, pieces)];
+        }
+        
+        function getKingMoves(r, c, pieces, checkThreats=true) {
+             const moves = [];
+             const myColor = pieces[r][c].color;
+             const enemyColor = myColor === 'w' ? 'b' : 'w';
+             const threatMap = checkThreats ? generateThreatMap(enemyColor, pieces) : null;
+
+             for(let dr = -1; dr <= 1; dr++) {
+                 for(let dc = -1; dc <= 1; dc++) {
+                     if(dr === 0 && dc === 0) continue;
+                     const nr = r + dr, nc = c + dc;
+                     if(nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+                         const targetPiece = pieces[nr][nc];
+                         if (targetPiece && targetPiece.color === myColor) continue;
+                         if (checkThreats && threatMap[nr][nc]) continue;
+                         moves.push([nr, nc]);
+                     }
+                 }
+             }
+             return moves;
+        }
+
+        function getPawnMoves(r, c, color, pieces) {
+            const moves = [];
+            const dir = color === 'w' ? -1 : 1;
+            const startRow = color === 'w' ? 6 : 1;
+            
+            if (r + dir >= 0 && r + dir < 8 && !pieces[r+dir][c]) {
+                moves.push([r+dir, c]);
+                if (r === startRow && !pieces[r+2*dir][c]) {
+                    moves.push([r+2*dir, c]);
+                }
+            }
+            if(r + dir >= 0 && r + dir < 8) {
+                if(c > 0 && pieces[r+dir][c-1] && pieces[r+dir][c-1].color !== color) moves.push([r + dir, c - 1]);
+                if(c < 7 && pieces[r+dir][c+1] && pieces[r+dir][c+1].color !== color) moves.push([r + dir, c + 1]);
+            }
+            return moves;
+        }
+        
+        function getMovesForPiece(piece, r, c, pieces, checkKingSafety=true) {
+            const type = piece.type;
+            let potentialMoves = [];
+            if (type === 'N') potentialMoves = getKnightMoves(r, c);
+            if (type === 'R') potentialMoves = getRookMoves(r, c, pieces);
+            if (type === 'B') potentialMoves = getBishopMoves(r, c, pieces);
+            if (type === 'Q') potentialMoves = getQueenMoves(r, c, pieces);
+            if (type === 'K') potentialMoves = getKingMoves(r, c, pieces, checkKingSafety);
+            if (type === 'P') potentialMoves = getPawnMoves(r, c, piece.color, pieces);
+            
+            // Filter out moves landing on friendly pieces
+            return potentialMoves.filter(([nr, nc]) => !pieces[nr][nc] || pieces[nr][nc].color !== piece.color);
+        }
+        
+        function createBoard() {
+            chessboardContainer.innerHTML = `
+                <div class="absolute -left-6 top-0 bottom-0 flex flex-col justify-around text-amber-800 font-bold text-sm">
+                    ${Array.from({length: 8}, (_, i) => `<span>${8-i}</span>`).join('')}
+                </div>
+                <div id="chessboard" class="aspect-square shadow-2xl rounded-lg overflow-hidden border-8 border-amber-800"></div>
+                <div class="absolute -bottom-6 left-0 right-0 flex justify-around text-amber-800 font-bold text-sm">
+                     ${Array.from({length: 8}, (_, i) => `<span>${String.fromCharCode(97+i)}</span>`).join('')}
+                </div>
+            `;
+            chessboard = document.getElementById('chessboard');
+
+            for (let i = 0; i < 8; i++) {
+                boardState[i] = [];
+                for (let j = 0; j < 8; j++) {
+                    const square = document.createElement('div');
+                    square.classList.add('board-square', 'aspect-square');
+                    const isLight = (i + j) % 2 === 0;
+                    square.classList.add(isLight ? 'bg-amber-200' : 'bg-amber-600');
+                    
+                    const content = document.createElement('div');
+                    content.classList.add('board-square-content');
+                    square.appendChild(content);
+
+                    square.dataset.row = i;
+                    square.dataset.col = j;
+                    square.addEventListener('mousedown', (e) => onDragStart(e, i, j));
+                    square.addEventListener('click', () => onSquareClick(i, j));
+                    square.addEventListener('mouseover', () => onSquareHover(i, j, true));
+                    square.addEventListener('mouseout', () => onSquareHover(i, j, false));
+                    
+                    chessboard.appendChild(square);
+                    boardState[i][j] = { element: square };
+                }
+            }
+        }
+        
+        function updateInfoPanel() {
+            const content = INFO_CONTENT[currentMode];
+            let statusHTML = '';
+            let subControlsHTML = '';
+            const isAdvancedPathfinder = currentMode === 'path' && sandboxState.activeScenario;
+
+            if (currentMode === 'sandbox') {
+                if (sandboxState.activeScenario && sandboxState.subMode !== 'setup') {
+                    subControlsHTML = `
+                        <div class="mt-4">
+                            <h3 class="font-semibold text-stone-700 mb-2">Scenario: ${sandboxState.activeScenario.name}</h3>
+                            <div class="flex gap-2">
+                                <button id="play-scenario-btn" class="flex-1 px-3 py-1.5 text-sm rounded-md shadow-sm ${sandboxState.subMode === 'play' ? 'bg-green-600 text-white' : 'bg-green-100 text-green-800 hover:bg-green-200'}">Play Scenario</button>
+                                <button id="analyze-scenario-btn" class="flex-1 px-3 py-1.5 text-sm rounded-md shadow-sm ${sandboxState.subMode === 'analyze' ? 'bg-blue-600 text-white' : 'bg-blue-100 text-blue-800 hover:bg-blue-200'}">Analyze with Pathfinder</button>
+                            </div>
+                            <button id="exit-scenario-btn" class="w-full mt-2 px-3 py-1.5 text-sm rounded-md shadow-sm bg-stone-200 hover:bg-stone-300">Back to Setup</button>
+                        </div>
+                    `;
+                    if (sandboxState.subMode === 'analyze') {
+                        subControlsHTML += `
+                            <div class="mt-4 flex items-center gap-4">
+                                <label class="flex items-center gap-2 text-sm text-stone-700">
+                                    <input type="checkbox" id="allow-trades-checkbox" ${pathfinderState.allowTrades ? 'checked' : ''} class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                    Allow Fair Trades
+                                </label>
+                            </div>
+                        `;
+                        if (pathfinderState.path) {
+                             statusHTML = `<p class="mt-2 p-2 rounded-md bg-green-100 text-green-800 text-sm">Path found in ${pathfinderState.path.length - 1} moves! Click to reset.</p>`;
+                        } else if (!pathfinderState.start) {
+                            statusHTML = `<p class="mt-2 p-2 rounded-md bg-blue-100 text-blue-800 text-sm">Status: Select a starting Knight.</p>`;
+                        } else if (!pathfinderState.end) {
+                            statusHTML = `<p class="mt-2 p-2 rounded-md bg-blue-100 text-blue-800 text-sm">Status: Start at [${pathfinderState.start.r}, ${pathfinderState.start.c}]. Select a destination.</p>`;
+                        }
+                    } else if (sandboxState.subMode === 'play') {
+                        statusHTML = `<p class="mt-2 p-2 rounded-md bg-stone-100 text-stone-800 text-sm">Turn: ${sandboxState.turn === 'w' ? 'White' : 'Black'}</p>`;
+                    }
+                } else {
+                    const pieces = ['K', 'Q', 'R', 'B', 'N', 'P'];
+                    const piecePalette = (color) => pieces.map(p => {
+                        const bgColor = color === 'w' ? 'bg-gray-800' : 'bg-white';
+                         return `
+                        <div class="piece-palette-item w-10 h-10 p-1 border-2 rounded ${bgColor} ${sandboxState.selectedPiece === color+p ? 'selected' : 'border-stone-200'}" data-piece="${color+p}">
+                            ${PIECES_SVG[color+p]}
+                        </div>
+                    `}).join('');
+                    
+                    subControlsHTML = `
+                        <div class="mt-4">
+                            <h3 class="font-semibold text-stone-700 mb-2">Piece Palette</h3>
+                             <div class="flex items-center gap-2 mb-2">
+                                <div class="piece-palette-item w-10 h-10 p-1 border-2 rounded flex items-center justify-center bg-red-200 ${sandboxState.selectedPiece === 'eraser' ? 'selected' : 'border-stone-200'}" data-piece="eraser">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-red-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                </div>
+                            </div>
+                            <div class="flex gap-2 mb-2">${piecePalette('w')}</div>
+                            <div class="flex gap-2">${piecePalette('b')}</div>
+                            <div class="flex gap-2 mt-4">
+                                 <button id="reset-board-btn" class="flex-1 px-3 py-1.5 text-sm rounded-md shadow-sm bg-blue-500 text-white hover:bg-blue-600">Reset to Start</button>
+                                <button id="clear-board-btn" class="flex-1 px-3 py-1.5 text-sm rounded-md shadow-sm bg-red-500 text-white hover:bg-red-600">Clear All</button>
+                            </div>
+                            <button id="save-scenario-btn" class="w-full mt-2 px-3 py-1.5 text-sm rounded-md shadow-sm bg-green-500 text-white hover:bg-green-600">Save Scenario</button>
+                             <div id="scenarios-list" class="mt-4"></div>
+                        </div>
+                    `;
+                }
+            } else if (currentMode === 'path') {
+                if(isAdvancedPathfinder) {
+                    subControlsHTML = `
+                        <div class="mt-4 flex items-center gap-4">
+                            <label class="flex items-center gap-2 text-sm text-stone-700">
+                                <input type="checkbox" id="allow-trades-checkbox" ${pathfinderState.allowTrades ? 'checked' : ''} class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                Allow Fair Trades
+                            </label>
+                        </div>
+                    `;
+                }
+                if (pathfinderState.path) {
+                     statusHTML = `<p class="mt-2 p-2 rounded-md bg-green-100 text-green-800 text-sm">Path found in ${pathfinderState.path.length - 1} moves! Click to reset.</p>`;
+                } else if (!pathfinderState.start) {
+                    statusHTML = `<p class="mt-2 p-2 rounded-md bg-blue-100 text-blue-800 text-sm">Status: Select a starting square.</p>`;
+                } else if (!pathfinderState.end) {
+                    statusHTML = `<p class="mt-2 p-2 rounded-md bg-blue-100 text-blue-800 text-sm">Status: Start at [${pathfinderState.start.r}, ${pathfinderState.start.c}]. Select a destination.</p>`;
+                }
+            } else if (currentMode === 'moves' && pathfinderState.isAnimating) {
+                statusHTML = `<p class="mt-2 p-2 rounded-md bg-yellow-100 text-yellow-800 text-sm">Animating possible moves...</p>`;
+            }
+
+            infoPanel.innerHTML = `
+                <p class="font-semibold text-blue-700">${content.instruction}</p>
+                <p class="text-stone-600 mt-2">${content.description}</p>
+                ${statusHTML}
+                ${subControlsHTML}
+            `;
+
+            if (currentMode === 'sandbox') {
+                if (sandboxState.activeScenario && sandboxState.subMode !== 'setup') {
+                    document.getElementById('play-scenario-btn').addEventListener('click', () => setSandboxSubMode('play'));
+                    document.getElementById('analyze-scenario-btn').addEventListener('click', () => setSandboxSubMode('analyze'));
+                    document.getElementById('exit-scenario-btn').addEventListener('click', () => {
+                        setSandboxSubMode('setup');
+                    });
+                     if (sandboxState.subMode === 'analyze') {
+                        document.getElementById('allow-trades-checkbox').addEventListener('change', (e) => {
+                            pathfinderState.allowTrades = e.target.checked;
+                             if(pathfinderState.start && pathfinderState.end) {
+                                pathfinderState.path = null;
+                                findAndDrawPath(true);
+                                redrawAll();
+                            }
+                        });
+                    }
+                } else {
+                     document.querySelectorAll('.piece-palette-item').forEach(item => item.addEventListener('click', (e) => {
+                        sandboxState.selectedPiece = sandboxState.selectedPiece === e.currentTarget.dataset.piece ? null : e.currentTarget.dataset.piece;
+                        updateInfoPanel();
+                    }));
+                    document.getElementById('reset-board-btn').addEventListener('click', () => {
+                        sandboxState.pieces = JSON.parse(JSON.stringify(STANDARD_BOARD_SETUP));
+                        redrawAll();
+                    });
+                    document.getElementById('clear-board-btn').addEventListener('click', () => {
+                        sandboxState.pieces = Array(8).fill(null).map(() => Array(8).fill(null));
+                        redrawAll();
+                    });
+                    document.getElementById('save-scenario-btn').addEventListener('click', saveScenario);
+                    renderScenariosList();
+                }
+            } else if (isAdvancedPathfinder) {
+                document.getElementById('allow-trades-checkbox').addEventListener('change', (e) => {
+                    pathfinderState.allowTrades = e.target.checked;
+                    if(pathfinderState.start && pathfinderState.end) {
+                        pathfinderState.path = null;
+                        findAndDrawPath();
+                        redrawAll();
+                    }
+                });
+            }
+        }
+
+        // ... (the rest of the script, including all drawing, interaction, and logic functions)
+        function updateLayout() {
+            boardWrapper.classList.toggle('hidden', currentView === 'graph');
+            graphContainer.classList.toggle('hidden', currentView === 'board');
+            
+            boardWrapper.classList.toggle('lg:w-full', currentView === 'board');
+            graphContainer.classList.toggle('lg:w-full', currentView === 'graph');
+
+            const isSplit = currentView === 'split';
+            boardWrapper.classList.toggle('lg:w-1/2', isSplit);
+            graphContainer.classList.toggle('lg:w-1/2', isSplit);
+
+            Object.entries(viewButtons).forEach(([key, btn]) => {
+                btn.classList.toggle('bg-blue-600', key === currentView);
+                btn.classList.toggle('text-white', key === currentView);
+                btn.classList.toggle('bg-stone-200', key !== currentView);
+                btn.classList.toggle('hover:bg-stone-300', key !== currentView);
+            });
+
+            setTimeout(setupGraphCanvas, 50);
+        }
+
+        function setView(view) {
+            currentView = view;
+            updateLayout();
+        }
+
+        function setupGraphCanvas() {
+            graphCanvas = document.getElementById('graph-canvas');
+            if(!graphCanvas || !graphCanvas.parentElement) return;
+            graphCtx = graphCanvas.getContext('2d');
+            
+            const size = Math.min(graphCanvas.parentElement.clientWidth, graphCanvas.parentElement.clientHeight);
+            graphCanvas.width = size;
+            graphCanvas.height = size;
+            
+            const padding = size * 0.1;
+            const gridSize = size - 2 * padding;
+            const cellWidth = gridSize / 7;
+            nodeRadius = cellWidth * 0.25;
+            
+            nodePositions = [];
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    nodePositions.push({ x: padding + c * cellWidth, y: padding + r * cellWidth, r, c });
+                }
+            }
+            drawGraphRepresentation();
+        }
+        
+        function drawGraphRepresentation() {
+            if (!graphCtx) return;
+            graphCtx.clearRect(0, 0, graphCanvas.width, graphCanvas.height);
+            
+            const isAdvancedPathfinder = (currentMode === 'sandbox' && sandboxState.subMode === 'analyze') || (currentMode === 'path' && sandboxState.activeScenario);
+            const threatMap = isAdvancedPathfinder && pathfinderState.start ? generateThreatMap(pathfinderState.start.color === 'w' ? 'b' : 'w') : null;
+            const boardPieces = sandboxState.activeScenario ? sandboxState.activeScenario.pieces : sandboxState.pieces;
+
+            graphCtx.strokeStyle = '#d6d3d1';
+            graphCtx.lineWidth = 1;
+            nodePositions.forEach(node => {
+                const moves = getKnightMoves(node.r, node.c);
+                moves.forEach(([moveR, moveC]) => {
+                    const targetNode = nodePositions[moveR * 8 + moveC];
+                    graphCtx.beginPath();
+                    graphCtx.moveTo(node.x, node.y);
+                    graphCtx.lineTo(targetNode.x, targetNode.y);
+                    graphCtx.stroke();
+                });
+            });
+
+            const pathSet = pathfinderState.path ? new Set(pathfinderState.path.map(p => p.toString())) : null;
+
+            if (pathfinderState.path) {
+                for (let i = 0; i < pathfinderState.path.length - 1; i++) {
+                    const [r1, c1] = pathfinderState.path[i];
+                    const [r2, c2] = pathfinderState.path[i+1];
+                    const node1 = nodePositions[r1*8+c1];
+                    const node2 = nodePositions[r2*8+c2];
+                    graphCtx.beginPath();
+                    graphCtx.moveTo(node1.x, node1.y);
+                    graphCtx.lineTo(node2.x, node2.y);
+                    graphCtx.strokeStyle = '#3b82f6';
+                    graphCtx.lineWidth = 3;
+                    graphCtx.stroke();
+                }
+            }
+
+            nodePositions.forEach(node => {
+                graphCtx.beginPath();
+                graphCtx.arc(node.x, node.y, nodeRadius, 0, 2 * Math.PI);
+                
+                const isStart = pathfinderState.start && pathfinderState.start.r === node.r && pathfinderState.start.c === node.c;
+                const isEnd = pathfinderState.end && pathfinderState.end[0] === node.r && pathfinderState.end[1] === node.c;
+                const onPath = pathSet && pathSet.has([node.r, node.c].toString());
+                const isHover = pathfinderState.hoverNode && pathfinderState.hoverNode.r === node.r && pathfinderState.hoverNode.c === node.c;
+
+                let fillStyle = '#a8a29e';
+                if (currentMode === 'heatmap') {
+                    const moves = getKnightMoves(node.r, node.c).length;
+                    fillStyle = {2:'#818cf8', 3:'#7dd3fc', 4:'#86efac', 6:'#fde047', 8:'#f87171'}[moves] || fillStyle;
+                } else if(threatMap && threatMap[node.r][node.c]) {
+                    const isTrade = boardPieces[node.r][node.c] !== null;
+                    fillStyle = isTrade ? '#facc15' : '#f87171';
+                }
+                
+                if (isStart) fillStyle = '#3b82f6'; 
+                else if (isEnd) fillStyle = '#ef4444';
+                else if (onPath) fillStyle = '#60a5fa';
+                else if (isHover) fillStyle = '#f59e0b';
+                
+                graphCtx.fillStyle = fillStyle;
+                graphCtx.fill();
+            });
+        }
+        
+        function clearBoardHighlights() {
+            chessboardContainer.querySelectorAll('.knight-piece, .ghost-knight, .chess-piece.dragging').forEach(el => el.remove());
+            for (let i = 0; i < 8; i++) {
+                for (let j = 0; j < 8; j++) {
+                    const square = boardState[i][j].element;
+                    square.classList.remove('bg-blue-400', 'bg-green-400', 'bg-red-400', 'bg-yellow-300', 'bg-red-500', 'bg-blue-500', 'bg-amber-400', 'last-move-highlight');
+                    const isLight = (i + j) % 2 === 0;
+                    square.classList.add(isLight ? 'bg-amber-200' : 'bg-amber-600');
+                    square.classList.remove(!isLight ? 'bg-amber-200' : 'bg-amber-600');
+                    Object.values(HEATMAP_COLORS).forEach(colorClass => square.classList.remove(colorClass));
+                }
+            }
+        }
+        
+        function onSquareClick(row, col) {
+            handleInteraction(row, col);
+        }
+
+        function handleInteraction(row, col) {
+            if (pathfinderState.isAnimating) return;
+
+            if (currentMode === 'sandbox') {
+                handleSandboxInteraction(row, col);
+            } else if (currentMode === 'moves') {
+                clearHighlightsAndState();
+                pathfinderState.start = {r: row, c: col};
+                animatePossibleMoves(row, col);
+            } else if (currentMode === 'path') {
+                handlePathfinderInteraction(row, col);
+            }
+        }
+
+        function handleSandboxInteraction(row, col) {
+            if (sandboxState.subMode === 'setup') {
+                if (sandboxState.selectedPiece === 'eraser') {
+                    sandboxState.pieces[row][col] = null;
+                } else if (sandboxState.selectedPiece) {
+                    const color = sandboxState.selectedPiece[0];
+                    const type = sandboxState.selectedPiece[1];
+                    sandboxState.pieces[row][col] = { type, color };
+                } else {
+                     sandboxState.pieces[row][col] = null;
+                }
+            } else if (sandboxState.subMode === 'play') {
+                // Click to move logic (drag is separate)
+                const boardPieces = sandboxState.activeScenario.pieces;
+                const clickedPiece = boardPieces[row][col];
+
+                if (sandboxState.play.selectedSquare) {
+                    const [startR, startC] = sandboxState.play.selectedSquare;
+                    const validMove = sandboxState.play.validMoves.find(m => m[0] === row && m[1] === col);
+
+                    if (validMove) {
+                        boardPieces[row][col] = boardPieces[startR][startC];
+                        boardPieces[startR][startC] = null;
+                        sandboxState.turn = sandboxState.turn === 'w' ? 'b' : 'w';
+                        sandboxState.play.lastMove = { from: [startR, startC], to: [row, col] };
+                    }
+                    sandboxState.play.selectedSquare = null;
+                    sandboxState.play.validMoves = [];
+
+                } else if (clickedPiece && clickedPiece.color === sandboxState.turn) {
+                    sandboxState.play.selectedSquare = [row, col];
+                    sandboxState.play.validMoves = getMovesForPiece(clickedPiece, row, col, boardPieces);
+                }
+            } else if (sandboxState.subMode === 'analyze') {
+                handlePathfinderInteraction(row, col, true);
+            }
+            redrawAll();
+        }
+        
+        function handlePathfinderInteraction(row, col, isSandboxAnalysis = false) {
+            const boardPieces = isSandboxAnalysis ? sandboxState.activeScenario.pieces : Array(8).fill(null).map(() => Array(8).fill(null));
+
+            if (!pathfinderState.start || pathfinderState.end) {
+                clearHighlightsAndState();
+                const piece = boardPieces[row][col];
+                 if (!isSandboxAnalysis || (piece && piece.type === 'N')) {
+                    pathfinderState.start = {r: row, c: col, color: piece ? piece.color : 'w'};
+                }
+            } else if (!pathfinderState.end) {
+                if(pathfinderState.start.r === row && pathfinderState.start.c === col) return;
+                pathfinderState.end = [row, col];
+                findAndDrawPath(isSandboxAnalysis);
+            }
+            redrawAll();
+        }
+        
+        function animatePossibleMoves(startRow, startCol) {
+            pathfinderState.isAnimating = true;
+            redrawAll(); 
+
+            const validMoves = getKnightMoves(startRow, startCol);
+            const squareSize = chessboard.offsetWidth / 8;
+            let animationsCompleted = 0;
+
+            validMoves.forEach(([r, c]) => {
+                const ghostKnight = document.createElement('div');
+                ghostKnight.className = 'knight-piece ghost-knight text-slate-700';
+                ghostKnight.innerHTML = PIECES_SVG['bN'];
+                chessboardContainer.appendChild(ghostKnight);
+
+                const startX = startCol * squareSize + (squareSize * 0.1);
+                const startY = startRow * squareSize + (squareSize * 0.1);
+                ghostKnight.style.transform = `translate(${startX}px, ${startY}px)`;
+                
+                const endX = c * squareSize + (squareSize * 0.1);
+                const endY = r * squareSize + (squareSize * 0.1);
+
+                setTimeout(() => {
+                    ghostKnight.style.transform = `translate(${endX}px, ${endY}px)`;
+                }, 50);
+
+                ghostKnight.addEventListener('transitionend', () => {
+                    boardState[r][c].element.classList.add('bg-green-400');
+                    ghostKnight.remove();
+                    animationsCompleted++;
+                    if (animationsCompleted === validMoves.length) {
+                        pathfinderState.isAnimating = false;
+                        redrawAll();
+                    }
+                }, { once: true });
+            });
+        }
+
+        function findAndDrawPath(isAdvanced) {
+            if(!pathfinderState.start || !pathfinderState.end) return;
+            
+            const boardPieces = isAdvanced ? sandboxState.activeScenario.pieces : Array(8).fill(null).map(() => Array(8).fill(null));
+
+            const startNode = pathfinderState.start;
+            const endNode = pathfinderState.end;
+            const enemyColor = startNode.color === 'w' ? 'b' : 'w';
+            const threatMap = isAdvanced ? generateThreatMap(enemyColor) : Array(8).fill(null).map(() => Array(8).fill(false));
+            
+            const costs = Array(8).fill(null).map(() => Array(8).fill(Infinity));
+            const cameFrom = Array(8).fill(null).map(() => Array(8).fill(null));
+            costs[startNode.r][startNode.c] = 0;
+
+            let pq = [{r: startNode.r, c: startNode.c, cost: 0}];
+
+            while(pq.length > 0) {
+                pq.sort((a,b) => a.cost - b.cost);
+                const current = pq.shift();
+
+                if (current.r === endNode[0] && current.c === endNode[1]) {
+                    pathfinderState.path = [];
+                    let curr = endNode;
+                    while(curr) {
+                        pathfinderState.path.unshift(curr);
+                        curr = cameFrom[curr[0]][curr[1]];
+                    }
+                    return;
+                }
+
+                for(const move of getKnightMoves(current.r, current.c)) {
+                    const [nr, nc] = move;
+                    let moveCost = 1;
+                    if (isAdvanced && threatMap[nr][nc]) {
+                        const isTrade = boardPieces[nr][nc] && boardPieces[nr][nc].color === enemyColor;
+                        if(isTrade && pathfinderState.allowTrades) {
+                            moveCost = 5; // Trade cost
+                        } else if (!isTrade) {
+                            moveCost = 1000; // High cost for moving into threat
+                        } else { 
+                            moveCost = Infinity;
+                        }
+                    }
+                    const newCost = costs[current.r][current.c] + moveCost;
+                    if (newCost < costs[nr][nc]) {
+                        costs[nr][nc] = newCost;
+                        cameFrom[nr][nc] = [current.r, current.c];
+                        pq.push({r: nr, c: nc, cost: newCost});
+                    }
+                }
+            }
+        }
+        
+        function redrawAll() {
+            clearBoardHighlights();
+            const isAdvancedPathfinder = (currentMode === 'sandbox' && sandboxState.subMode === 'analyze') || (currentMode === 'path' && sandboxState.activeScenario);
+            const boardPieces = (currentMode === 'sandbox' || isAdvancedPathfinder) ? (sandboxState.activeScenario ? sandboxState.activeScenario.pieces : sandboxState.pieces) : Array(8).fill(null).map(() => Array(8).fill(null));
+            
+            const enemyColor = pathfinderState.start ? (pathfinderState.start.color === 'w' ? 'b' : 'w') : null;
+            const threatMap = (isAdvancedPathfinder && pathfinderState.start && !pathfinderState.path) ? generateThreatMap(enemyColor) : null;
+            
+            for(let r=0; r<8; r++) {
+                for(let c=0; c<8; c++) {
+                    const piece = boardPieces[r][c];
+                    const squareContent = boardState[r][c].element.querySelector('.board-square-content');
+                    squareContent.style.opacity = (sandboxState.play.dragging && sandboxState.play.dragging.from[0] === r && sandboxState.play.dragging.from[1] === c) ? 0 : 1;
+                    if(piece) {
+                        squareContent.innerHTML = `<div class="chess-piece w-full h-full p-1">${PIECES_SVG[piece.color + piece.type]}</div>`;
+                    } else {
+                        squareContent.innerHTML = '';
+                    }
+                     if(threatMap && threatMap[r][c]) {
+                        const isTradeSquare = boardPieces[r][c] && boardPieces[r][c].color === enemyColor;
+                        boardState[r][c].element.classList.add(isTradeSquare ? 'bg-yellow-300' : 'bg-red-400');
+                    }
+                }
+            }
+
+            if (sandboxState.play.lastMove) {
+                const { from, to } = sandboxState.play.lastMove;
+                boardState[from[0]][from[1]].element.classList.add('last-move-highlight');
+                boardState[to[0]][to[1]].element.classList.add('last-move-highlight');
+            }
+
+            if (pathfinderState.isAnimating && currentMode === 'moves') {
+                const {r,c} = pathfinderState.start;
+                const square = boardState[r][c].element;
+                square.classList.add('bg-blue-500');
+                square.querySelector('.board-square-content').innerHTML = `<div class="w-full h-full p-1 text-white">${PIECES_SVG['wN']}</div>`;
+            } else if(currentMode === 'moves' && pathfinderState.start) {
+                const {r,c} = pathfinderState.start;
+                boardState[r][c].element.classList.add('bg-blue-500');
+                boardState[r][c].element.querySelector('.board-square-content').innerHTML = `<div class="w-full h-full p-1 text-white">${PIECES_SVG['wN']}</div>`;
+                const validMoves = getKnightMoves(r, c);
+                validMoves.forEach(([vr, vc]) => {
+                    boardState[vr][vc].element.classList.add('bg-green-400');
+                });
+            } else if (currentMode === 'heatmap') {
+                 for (let i = 0; i < 8; i++) {
+                    for (let j = 0; j < 8; j++) {
+                        const square = boardState[i][j].element;
+                        const moves = getKnightMoves(i, j).length;
+                        if (HEATMAP_COLORS[moves]) square.classList.add(HEATMAP_COLORS[moves]);
+                        const content = square.querySelector('.board-square-content');
+                        content.textContent = moves;
+                        content.classList.add('text-stone-700', 'opacity-75', 'text-2xl');
+                    }
+                }
+            } else if (currentMode === 'path' || (currentMode === 'sandbox' && sandboxState.subMode === 'analyze')) {
+                if(pathfinderState.start){
+                     const {r, c} = pathfinderState.start;
+                     boardState[r][c].element.classList.add('bg-blue-500');
+                }
+                if(pathfinderState.end) {
+                    const [r,c] = pathfinderState.end;
+                    boardState[r][c].element.classList.add('bg-red-500');
+                }
+                if (pathfinderState.path) {
+                    const pathThreatMap = isAdvancedPathfinder ? generateThreatMap(enemyColor) : null;
+                    pathfinderState.path.forEach(([r,c], i) => {
+                         if (i === 0 || i === pathfinderState.path.length - 1) return;
+                        let colorClass = 'bg-blue-400';
+                        if(isAdvancedPathfinder && pathThreatMap && pathThreatMap[r][c]) {
+                           colorClass = (boardPieces[r][c] && boardPieces[r][c].color === enemyColor) ? 'bg-yellow-300' : 'bg-red-400';
+                        }
+                        boardState[r][c].element.classList.add(colorClass);
+                    });
+                }
+            } else if (currentMode === 'sandbox' && sandboxState.subMode === 'play' && (sandboxState.play.selectedSquare || sandboxState.play.dragging)) {
+                const [r,c] = sandboxState.play.selectedSquare || sandboxState.play.dragging.from;
+                boardState[r][c].element.classList.add('bg-blue-500');
+                sandboxState.play.validMoves.forEach(([vr,vc]) => {
+                    const content = boardState[vr][vc].element.querySelector('.board-square-content');
+                    content.innerHTML = `<div class="valid-move-dot"></div>`;
+                });
+            }
+
+            updateInfoPanel();
+            drawGraphRepresentation();
+        }
+
+        function clearHighlightsAndState() {
+             pathfinderState = { start: null, end: null, path: null, hoverNode: null, isAnimating: false, allowTrades: pathfinderState.allowTrades };
+             if(currentMode !== 'sandbox') {
+                sandboxState.selectedPiece = 'eraser';
+             }
+             sandboxState.play = { selectedSquare: null, validMoves: [], dragging: null, lastMove: null };
+        }
+
+        function setMode(mode) {
+            currentMode = mode;
+            Object.values(modeButtons).forEach(btn => btn.classList.remove('bg-blue-600', 'text-white', 'bg-stone-200', 'text-stone-700'));
+            Object.entries(modeButtons).forEach(([key, btn]) => {
+                 btn.classList.add(key === mode ? 'bg-blue-600' : 'bg-stone-200');
+                 btn.classList.add(key === mode ? 'text-white' : 'text-stone-700');
+            });
+            clearHighlightsAndState();
+            
+            if(mode === 'sandbox'){
+                 sandboxState.subMode = 'setup';
+            } else if (mode !== 'path') {
+                sandboxState.activeScenario = null;
+            }
+            redrawAll();
+        }
+        
+        function setSandboxSubMode(subMode) {
+            sandboxState.subMode = subMode;
+            clearHighlightsAndState();
+            redrawAll();
+        }
+
+        // ... Hover and Graph Click functions ...
+         function onSquareHover(r, c, isHovering) {
+            pathfinderState.hoverNode = isHovering ? { r, c } : null;
+            if(!pathfinderState.isAnimating) drawGraphRepresentation();
+        }
+
+        function onGraphHover(event) {
+            const rect = graphCanvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            let foundNode = null;
+            for (const node of nodePositions) {
+                const dist = Math.sqrt((x - node.x)**2 + (y - node.y)**2);
+                if (dist < nodeRadius) {
+                    foundNode = node;
+                    break;
+                }
+            }
+            clearBoardHover();
+            if (foundNode) {
+                boardState[foundNode.r][foundNode.c].element.classList.add('bg-amber-400');
+                pathfinderState.hoverNode = { r: foundNode.r, c: foundNode.c };
+            } else {
+                 pathfinderState.hoverNode = null;
+            }
+        }
+        
+        function onGraphClick(event) {
+            const rect = graphCanvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            for (const node of nodePositions) {
+                const dist = Math.sqrt(Math.pow(x - node.x, 2) + Math.pow(y - node.y, 2));
+                if (dist < nodeRadius) {
+                    handleInteraction(node.r, node.c);
+                    break;
+                }
+            }
+        }
+
+        function clearBoardHover() {
+            if(pathfinderState.isAnimating) return;
+            for (let i = 0; i < 8; i++) {
+                for (let j = 0; j < 8; j++) {
+                    boardState[i][j].element.classList.remove('bg-amber-400');
+                }
+            }
+        }
+        
+        function saveScenario() {
+            const name = prompt("Enter a name for this scenario:", "My Scenario");
+            if (!name) return;
+            const scenarios = getScenarios();
+            scenarios.push({name, pieces: sandboxState.pieces, turn: 'w'});
+            localStorage.setItem('chessScenarios', JSON.stringify(scenarios));
+            
+            loadScenario(scenarios.length - 1);
+        }
+
+        function getScenarios() {
+            return JSON.parse(localStorage.getItem('chessScenarios') || '[]');
+        }
+
+        function renderScenariosList() {
+             const container = document.getElementById('scenarios-list');
+            if(!container) return;
+            const scenarios = getScenarios();
+            if(scenarios.length === 0) {
+                container.innerHTML = `<p class="text-xs text-stone-500 italic mt-2">No saved scenarios.</p>`;
+                return;
+            }
+            container.innerHTML = `<h4 class="font-semibold text-stone-600 text-xs mt-4 mb-1">Saved Scenarios</h4>` + scenarios.map((s, i) => `
+                <div class="flex justify-between items-center text-sm p-1.5 rounded hover:bg-stone-100">
+                    <span class="cursor-pointer font-medium" onclick="loadScenario(${i})">${s.name}</span>
+                    <button class="text-red-500 hover:text-red-700 text-xs font-semibold" onclick="deleteScenario(${i})">DELETE</button>
+                </div>
+            `).join('');
+        }
+        
+        function loadScenario(index) {
+            const scenarios = getScenarios();
+            if(scenarios[index]) {
+                sandboxState.activeScenario = JSON.parse(JSON.stringify(scenarios[index]));
+                sandboxState.pieces = sandboxState.activeScenario.pieces;
+                setSandboxSubMode('play');
+            }
+        }
+        function deleteScenario(index) {
+             const scenarios = getScenarios();
+             scenarios.splice(index, 1);
+             localStorage.setItem('chessScenarios', JSON.stringify(scenarios));
+             renderScenariosList();
+        }
+        
+        function generateThreatMap(enemyColor) {
+            const boardPieces = sandboxState.activeScenario ? sandboxState.activeScenario.pieces : Array(8).fill(null).map(() => Array(8).fill(null));
+            const map = Array(8).fill(null).map(() => Array(8).fill(false));
+            for(let r=0; r<8; r++) {
+                for(let c=0; c<8; c++) {
+                    const piece = boardPieces[r][c];
+                    if(piece && piece.color === enemyColor) {
+                        const checkKingSafety = piece.type !== 'K';
+                        const moves = getMovesForPiece(piece, r, c, boardPieces, checkKingSafety);
+                        moves.forEach(([nr, nc]) => {
+                           if(piece.type === 'P' && nc === c && !boardPieces[nr][nc]) return; // Pawns only threaten on captures
+                           map[nr][nc] = true;
+                        });
+                    }
+                }
+            }
+            return map;
+        }
+
+        function onDragStart(event, r, c) {
+            if (currentMode !== 'sandbox' || sandboxState.subMode !== 'play' || pathfinderState.isAnimating) return;
+
+            const boardPieces = sandboxState.activeScenario.pieces;
+            const piece = boardPieces[r][c];
+            if (!piece || piece.color !== sandboxState.turn) return;
+
+            event.preventDefault();
+
+            const ghostPiece = document.createElement('div');
+            ghostPiece.innerHTML = PIECES_SVG[piece.color + piece.type];
+            ghostPiece.className = 'chess-piece dragging';
+            document.body.appendChild(ghostPiece);
+            
+            sandboxState.play.dragging = { from: [r,c], piece, element: ghostPiece };
+            sandboxState.play.validMoves = getMovesForPiece(piece, r, c, boardPieces);
+
+            ghostPiece.style.left = `${event.clientX - ghostPiece.offsetWidth / 2}px`;
+            ghostPiece.style.top = `${event.clientY - ghostPiece.offsetHeight / 2}px`;
+
+            redrawAll(); // Show valid move dots
+        }
+
+        function onDragMove(event) {
+            if (!sandboxState.play.dragging) return;
+            const ghostPiece = sandboxState.play.dragging.element;
+            ghostPiece.style.left = `${event.clientX - ghostPiece.offsetWidth / 2}px`;
+            ghostPiece.style.top = `${event.clientY - ghostPiece.offsetHeight / 2}px`;
+        }
+
+        function onDragEnd(event) {
+            if (!sandboxState.play.dragging) return;
+
+            const { from, piece, element } = sandboxState.play.dragging;
+            element.remove();
+
+            const boardRect = chessboard.getBoundingClientRect();
+            const squareSize = boardRect.width / 8;
+            const col = Math.floor((event.clientX - boardRect.left) / squareSize);
+            const row = Math.floor((event.clientY - boardRect.top) / squareSize);
+
+            if (row >= 0 && row < 8 && col >= 0 && col < 8) {
+                const validMove = sandboxState.play.validMoves.find(m => m[0] === row && m[1] === col);
+                if (validMove) {
+                    const boardPieces = sandboxState.activeScenario.pieces;
+                    boardPieces[row][col] = piece;
+                    boardPieces[from[0]][from[1]] = null;
+                    sandboxState.turn = sandboxState.turn === 'w' ? 'b' : 'w';
+                    sandboxState.play.lastMove = { from, to: [row, col] };
+                }
+            }
+
+            sandboxState.play.dragging = null;
+            sandboxState.play.validMoves = [];
+            redrawAll();
+        }
+
+
+        document.addEventListener('mousemove', onDragMove);
+        document.addEventListener('mouseup', onDragEnd);
+
+        Object.entries(modeButtons).forEach(([key, btn]) => btn.addEventListener('click', () => setMode(key)));
+        Object.entries(viewButtons).forEach(([key, btn]) => btn.addEventListener('click', () => setView(key)));
+
+        // Initial setup
+        createBoard();
+        setView(currentView);
+        
+        // Handle URL parameters to set initial mode for presentation embedding
+        document.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const initialMode = urlParams.get('mode');
+            if (initialMode && modeButtons[initialMode]) {
+                setMode(initialMode);
+            } else {
+                setMode('moves'); // Default
+            }
+        });
+        
+        window.addEventListener('resize', () => {
+            setupGraphCanvas();
+            redrawAll();
+        });
+    </script>
+</body>
+</html>
+
